@@ -65,6 +65,12 @@ self.onmessage = async (e) => {
   const { type, id, data } = e.data;
   
   try {
+    if (type === 'load') {
+      await loadFFmpeg();
+      self.postMessage({ type: 'complete', id, data: null });
+      return;
+    }
+    
     const ffmpegInstance = await loadFFmpeg();
     
     switch (type) {
@@ -74,17 +80,15 @@ self.onmessage = async (e) => {
       case 'cutVideo':
         await handleCutVideo(id, ffmpegInstance, data);
         break;
-      case 'load':
-        self.postMessage({ type: 'complete', id, data: null });
-        break;
       default:
         console.warn('Unknown message type:', type);
     }
   } catch (error) {
+    console.error('[FFmpeg Worker] Error:', error);
     self.postMessage({ 
       type: 'error', 
       id, 
-      error: error.message 
+      error: error.message || String(error)
     });
   }
 };
@@ -142,22 +146,31 @@ async function handleExtractAudio(id, ffmpeg, { fileData }) {
 
 async function handleCutVideo(id, ffmpeg, { fileData, segments, settings }) {
   const logProgress = ({ progress }) => {
-    self.postMessage({ type: 'progress', id, progress: progress * 100 });
+    try {
+      self.postMessage({ type: 'progress', id, progress: progress * 100 });
+    } catch (error) {
+      console.error('[FFmpeg Worker] Failed to send progress:', error);
+    }
   };
   
   ffmpeg.on('progress', logProgress);
   
   try {
+    console.log('[FFmpeg Worker] Starting video cut with', segments.length, 'segments');
+    
     await safeDelete(ffmpeg, 'input.mp4');
     await safeDelete(ffmpeg, 'output.mp4');
     
+    console.log('[FFmpeg Worker] Writing input file, size:', fileData.byteLength);
     await ffmpeg.writeFile('input.mp4', new Uint8Array(fileData));
     
+    // Build filter complex for cutting segments
     const filterParts = [];
     const concatInputs = [];
     
     segments.forEach((segment, index) => {
       const { start, end } = segment;
+      console.log(`[FFmpeg Worker] Segment ${index}: ${start}s - ${end}s`);
       filterParts.push(`[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS[v${index}]`);
       filterParts.push(`[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[a${index}]`);
       concatInputs.push(`[v${index}][a${index}]`);
@@ -168,8 +181,10 @@ async function handleCutVideo(id, ffmpeg, { fileData, segments, settings }) {
       `${concatInputs.join('')}concat=n=${segments.length}:v=1:a=1[outv][outa]`
     ].join(';');
     
+    console.log('[FFmpeg Worker] Filter complex:', filterComplex);
+    
     // Get quality settings
-    const { quality = 'medium', resolution = 'original' } = settings || {};
+    const { quality = 'medium', resolution = 'original', format = 'mp4' } = settings || {};
     
     // Quality presets
     const qualitySettings = {
@@ -211,10 +226,15 @@ async function handleCutVideo(id, ffmpeg, { fileData, segments, settings }) {
       '-crf', qualityConfig.crf,
       '-c:a', 'aac',
       '-b:a', qualityConfig.audioBitrate,
+      '-movflags', '+faststart', // Enable streaming
       'output.mp4'
     );
     
+    console.log('[FFmpeg Worker] Executing FFmpeg with args:', ffmpegArgs.join(' '));
+    
     const ret = await ffmpeg.exec(ffmpegArgs);
+    
+    console.log('[FFmpeg Worker] FFmpeg execution completed with code:', ret);
     
     if (ret !== 0) {
       throw new Error(`FFmpeg cut failed with code ${ret}`);
@@ -224,13 +244,18 @@ async function handleCutVideo(id, ffmpeg, { fileData, segments, settings }) {
       throw new Error('Output file output.mp4 was not created');
     }
     
+    console.log('[FFmpeg Worker] Reading output file');
     const data = await ffmpeg.readFile('output.mp4');
+    
+    console.log('[FFmpeg Worker] Output file size:', data.byteLength);
     
     await safeDelete(ffmpeg, 'input.mp4');
     await safeDelete(ffmpeg, 'output.mp4');
     
     // Get the underlying ArrayBuffer
     const buffer = data.buffer instanceof ArrayBuffer ? data.buffer : data.buffer.buffer;
+    
+    console.log('[FFmpeg Worker] Sending result, buffer size:', buffer.byteLength);
     
     self.postMessage({ 
       type: 'complete', 
@@ -240,6 +265,7 @@ async function handleCutVideo(id, ffmpeg, { fileData, segments, settings }) {
     }, [buffer]);
     
   } catch (error) {
+    console.error('[FFmpeg Worker] Cut video error:', error);
     await safeDelete(ffmpeg, 'input.mp4');
     await safeDelete(ffmpeg, 'output.mp4');
     throw error;

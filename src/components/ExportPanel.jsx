@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Download, Loader2, CheckCircle2, Play, HardDrive, Timer, FolderOpen, Info } from 'lucide-react';
+import { Download, Loader2, CheckCircle2 } from 'lucide-react';
 import { useEditor } from '../context/EditorContext';
 import { exportEditedVideo } from '../lib/video-processor';
 import { Button } from './ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Progress } from './ui/progress';
 
 export default function ExportPanel() {
@@ -16,33 +17,15 @@ export default function ExportPanel() {
     setIsExporting,
     setExportProgress,
     setExportedVideoUrl,
-    setShowExportPanel,
   } = useEditor();
 
   const [exportSettings, setExportSettings] = useState({
     format: 'mp4',
-    quality: 'medium',
+    quality: 'high',
     resolution: 'original',
   });
 
   const [statusMessage, setStatusMessage] = useState('');
-
-  const presets = [
-    { id: 'youtube', name: 'YouTube 1080p', desc: 'Optimized for streaming. H.264, High bitrate.', quality: 'high', resolution: '1080p' },
-    { id: 'social', name: 'Social Vertical', desc: '9:16 for TikTok/Reels. Mobile optimized.', quality: 'medium', resolution: '720p' },
-    { id: 'prores', name: 'ProRes 422', desc: 'Master quality. Large file size.', quality: 'high', resolution: 'original' },
-  ];
-
-  const [selectedPreset, setSelectedPreset] = useState('youtube');
-
-  const handlePresetClick = (preset) => {
-    setSelectedPreset(preset.id);
-    setExportSettings({
-      ...exportSettings,
-      quality: preset.quality,
-      resolution: preset.resolution,
-    });
-  };
 
   const handleExport = async () => {
     if (!videoFile) {
@@ -52,26 +35,36 @@ export default function ExportPanel() {
 
     setIsExporting(true);
     setStatusMessage('Preparing export...');
+    setExportProgress(0);
     
     try {
+      console.log('[ExportPanel] Starting export with settings:', exportSettings);
+      console.log('[ExportPanel] Deleted segments:', deletedSegments);
+      console.log('[ExportPanel] Video duration:', videoDuration);
+      
       const resultBlob = await exportEditedVideo(
         videoFile,
         deletedSegments,
         videoDuration,
         exportSettings,
         (progress, message) => {
+          console.log('[ExportPanel] Progress:', progress, message);
           setExportProgress(progress);
-          setStatusMessage(message);
+          setStatusMessage(message || 'Processing...');
         }
       );
+      
+      console.log('[ExportPanel] Export complete, blob size:', resultBlob.size);
       
       const url = URL.createObjectURL(resultBlob);
       setExportedVideoUrl(url);
       setStatusMessage('Export complete!');
+      setExportProgress(100);
     } catch (error) {
-      console.error('Export error:', error);
-      setStatusMessage('Export failed: ' + error.message);
-      alert('Export failed: ' + error.message);
+      console.error('[ExportPanel] Export error:', error);
+      const errorMsg = error.message || String(error);
+      setStatusMessage('Export failed: ' + errorMsg);
+      alert('Export failed: ' + errorMsg + '\n\nCheck the console for more details.');
     } finally {
       setIsExporting(false);
     }
@@ -84,11 +77,6 @@ export default function ExportPanel() {
     a.href = exportedVideoUrl;
     a.download = `edited-video-${Date.now()}.mp4`;
     a.click();
-    
-    // Close the export panel after download
-    setTimeout(() => {
-      setShowExportPanel(false);
-    }, 500);
   };
 
   const deletedDuration = deletedSegments.reduce((total, seg) => 
@@ -96,197 +84,143 @@ export default function ExportPanel() {
   );
 
   const remainingDuration = videoDuration - deletedDuration;
-  const estimatedSize = (remainingDuration * 2).toFixed(1); // Rough estimate: 2MB per minute
-
-  const formatDuration = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
 
   return (
-    <div className="flex flex-col h-full bg-[#111318]">
-      {/* Header */}
-      <div className="p-4 border-b border-[#282e39]">
-        <h3 className="text-white font-bold text-sm">Export Settings</h3>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {/* Presets */}
-        <section>
-          <h4 className="text-white text-xs font-bold uppercase tracking-wider mb-3">Presets</h4>
-          <div className="space-y-2">
-            {presets.map((preset) => (
-              <div
-                key={preset.id}
-                onClick={() => handlePresetClick(preset)}
-                className={`group cursor-pointer rounded-lg p-3 transition-all ${
-                  selectedPreset === preset.id
-                    ? 'bg-primary/10 border-2 border-primary'
-                    : 'bg-[#1E232E] border-2 border-transparent hover:border-primary/50'
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <p className="text-white text-sm font-bold mb-1">{preset.name}</p>
-                    <p className="text-gray-400 text-xs">{preset.desc}</p>
-                  </div>
-                  {selectedPreset === preset.id && (
-                    <CheckCircle2 className="w-5 h-5 text-primary flex-none" />
-                  )}
-                </div>
-              </div>
-            ))}
+    <Card className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20">
+      <CardHeader className="border-b bg-background/50">
+        <CardTitle className="text-xl font-bold flex items-center gap-2">
+          <span>🎬</span>
+          Export Video
+        </CardTitle>
+      </CardHeader>
+      
+      <CardContent className="space-y-4 p-6">
+        {/* Stats */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="p-4 bg-background rounded-lg border">
+            <div className="text-sm text-muted-foreground">Original Duration</div>
+            <div className="text-2xl font-bold text-foreground">
+              {Math.floor(videoDuration / 60)}:{Math.floor(videoDuration % 60).toString().padStart(2, '0')}
+            </div>
           </div>
-        </section>
-
-        {/* Format Selector */}
-        <section>
-          <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Format</label>
-          <div className="inline-flex rounded-lg p-1 bg-[#1E232E]">
-            {['mp4', 'webm'].map((format) => (
-              <button
-                key={format}
-                onClick={() => setExportSettings({ ...exportSettings, format })}
-                className={`px-4 py-1.5 rounded text-xs font-bold transition-all ${
-                  exportSettings.format === format
-                    ? 'bg-primary text-white shadow-sm'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                {format.toUpperCase()}
-              </button>
-            ))}
+          
+          <div className="p-4 bg-background rounded-lg border">
+            <div className="text-sm text-muted-foreground">After Editing</div>
+            <div className="text-2xl font-bold text-primary">
+              {Math.floor(remainingDuration / 60)}:{Math.floor(remainingDuration % 60).toString().padStart(2, '0')}
+            </div>
           </div>
-        </section>
+        </div>
 
-        {/* Resolution & Quality */}
-        <div className="space-y-4">
+        {deletedSegments.length > 0 && (
+          <div className="p-3 bg-background rounded-lg border border-destructive/30">
+            <div className="text-sm font-medium text-destructive">
+              {deletedSegments.length} segment{deletedSegments.length > 1 ? 's' : ''} will be removed
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              Saving {Math.floor(deletedDuration)} seconds
+            </div>
+          </div>
+        )}
+
+        {/* Export settings */}
+        <div className="space-y-3">
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Resolution</label>
+            <label className="text-sm font-medium mb-2 block">Format</label>
             <select
-              value={exportSettings.resolution}
-              onChange={(e) => setExportSettings({ ...exportSettings, resolution: e.target.value })}
-              className="w-full bg-[#1E232E] border border-[#282e39] text-white text-sm rounded-lg p-2.5"
+              value={exportSettings.format}
+              onChange={(e) => setExportSettings({ ...exportSettings, format: e.target.value })}
+              className="w-full px-3 py-2 rounded-md border bg-background"
               disabled={isExporting}
             >
-              <option value="original">Original Resolution</option>
-              <option value="1080p">1920 x 1080 (HD)</option>
-              <option value="720p">1280 x 720 (HD)</option>
-              <option value="480p">854 x 480 (SD)</option>
-              <option value="360p">640 x 360 (Low)</option>
+              <option value="mp4">MP4</option>
+              <option value="webm">WebM</option>
             </select>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Quality</label>
+            <label className="text-sm font-medium mb-2 block">Quality</label>
             <select
               value={exportSettings.quality}
               onChange={(e) => setExportSettings({ ...exportSettings, quality: e.target.value })}
-              className="w-full bg-[#1E232E] border border-[#282e39] text-white text-sm rounded-lg p-2.5"
+              className="w-full px-3 py-2 rounded-md border bg-background"
               disabled={isExporting}
             >
-              <option value="high">High (~5-10 MB/min)</option>
-              <option value="medium">Medium (~2-4 MB/min)</option>
-              <option value="low">Low (~1-2 MB/min)</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium mb-2 block">Resolution</label>
+            <select
+              value={exportSettings.resolution}
+              onChange={(e) => setExportSettings({ ...exportSettings, resolution: e.target.value })}
+              className="w-full px-3 py-2 rounded-md border bg-background"
+              disabled={isExporting}
+            >
+              <option value="original">Original</option>
+              <option value="1080p">1080p</option>
+              <option value="720p">720p</option>
             </select>
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="p-3 rounded-lg bg-[#1E232E] border border-[#282e39]">
-            <div className="flex items-center gap-2 text-gray-400 mb-1">
-              <HardDrive className="w-4 h-4" />
-              <span className="text-[10px] font-medium uppercase tracking-wider">Est. Size</span>
-            </div>
-            <p className="text-white text-lg font-mono font-semibold">{estimatedSize} MB</p>
-          </div>
-          <div className="p-3 rounded-lg bg-[#1E232E] border border-[#282e39]">
-            <div className="flex items-center gap-2 text-gray-400 mb-1">
-              <Timer className="w-4 h-4" />
-              <span className="text-[10px] font-medium uppercase tracking-wider">Duration</span>
-            </div>
-            <p className="text-white text-lg font-mono font-semibold">{formatDuration(remainingDuration)}</p>
-          </div>
-        </div>
-
-        {/* Info Box */}
-        {deletedSegments.length > 0 ? (
-          <div className="p-3 rounded bg-blue-500/10 border border-blue-500/20 flex gap-3 items-start">
-            <Info className="w-4 h-4 text-blue-400 flex-none mt-0.5" />
-            <p className="text-xs text-blue-200">
-              {deletedSegments.length} segment{deletedSegments.length > 1 ? 's' : ''} will be removed, saving {Math.floor(deletedDuration)} seconds.
-            </p>
-          </div>
-        ) : (
-          <div className="p-3 rounded bg-gray-500/10 border border-gray-500/20 flex gap-3 items-start">
-            <Info className="w-4 h-4 text-gray-400 flex-none mt-0.5" />
-            <p className="text-xs text-gray-300">
-              No segments deleted. Export will convert the video with selected quality settings.
-            </p>
-          </div>
-        )}
-
-        {/* Export Progress */}
+        {/* Export progress */}
         {isExporting && (
-          <div className="space-y-2 p-3 bg-[#1E232E] rounded-lg border border-[#282e39]">
-            <div className="flex justify-between text-xs text-white mb-1">
-              <span>{statusMessage}</span>
-              <span>{Math.round(exportProgress)}%</span>
+          <div className="space-y-2 p-4 bg-background rounded-lg border">
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+              <span className="text-sm font-medium">{statusMessage}</span>
             </div>
-            <Progress value={exportProgress} className="h-2" />
+            <Progress value={exportProgress} />
+            <div className="text-xs text-muted-foreground text-right">
+              {Math.round(exportProgress)}%
+            </div>
           </div>
         )}
 
-        {/* Export Success */}
+        {/* Export success */}
         {exportedVideoUrl && !isExporting && (
-          <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
-            <div className="flex items-center gap-2 text-green-300 mb-2">
+          <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+            <div className="flex items-center gap-2 text-green-700 dark:text-green-300 mb-2">
               <CheckCircle2 className="w-5 h-5" />
-              <span className="font-medium text-sm">Export Complete!</span>
+              <span className="font-medium">Export Complete!</span>
             </div>
             <Button
               onClick={handleDownload}
-              className="w-full bg-green-600 hover:bg-green-700 text-white"
+              className="w-full"
+              variant="default"
             >
               <Download className="w-4 h-4 mr-2" />
-              Download Video
+              Download Edited Video
             </Button>
           </div>
         )}
-      </div>
 
-      {/* Action Buttons */}
-      <div className="p-4 border-t border-[#282e39] space-y-2">
+        {/* Export button */}
         {!exportedVideoUrl && (
-          <>
-            <Button
-              onClick={handleExport}
-              disabled={isExporting || !videoFile}
-              className="w-full bg-primary hover:bg-blue-600 text-white font-bold py-3 shadow-lg shadow-blue-900/20"
-            >
-              {isExporting ? (
-                <>
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  Exporting...
-                </>
-              ) : (
-                <>
-                  Export Video
-                  <Download className="w-5 h-5 ml-2" />
-                </>
-              )}
-            </Button>
-            <button
-              onClick={() => setShowExportPanel(false)}
-              className="w-full text-gray-400 hover:text-white font-medium py-2 text-sm transition-colors"
-            >
-              Cancel
-            </button>
-          </>
+          <Button
+            onClick={handleExport}
+            disabled={isExporting || !videoFile || deletedSegments.length === 0}
+            className="w-full"
+            size="lg"
+          >
+            {isExporting ? (
+              <>
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                Exporting...
+              </>
+            ) : (
+              <>
+                <Download className="w-5 h-5 mr-2" />
+                Export Video
+              </>
+            )}
+          </Button>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
