@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Search, Loader2, Download, Trash2 } from 'lucide-react';
 import { useEditor } from '../context/EditorContext';
 import { processVideoTranscription } from '../lib/video-processor';
-import { exportTranscriptAsSRT, exportTranscriptAsVTT } from '../lib/transcription';
+import { exportTranscriptAsSRT, exportTranscriptAsVTT, loadWhisper } from '../lib/transcription';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
@@ -32,14 +32,39 @@ export default function TranscriptEditor() {
   const transcriptRef = useRef(null);
   const progressRef = useRef(0);
   const [statusMessage, setStatusMessage] = useState('');
+  const activeWordRef = useRef(null);
+
+  // Auto-scroll to active word
+  useEffect(() => {
+    if (activeWordRef.current && transcriptRef.current) {
+      const container = transcriptRef.current;
+      const activeElement = activeWordRef.current;
+      
+      const containerRect = container.getBoundingClientRect();
+      const elementRect = activeElement.getBoundingClientRect();
+      
+      // Check if element is outside visible area
+      if (elementRect.top < containerRect.top || elementRect.bottom > containerRect.bottom) {
+        activeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [currentTime]);
 
   const startTranscription = React.useCallback(async () => {
     console.log('[TranscriptEditor] Starting transcription...');
     setIsTranscribing(true);
     setTranscriptionProgress(0);
-    setStatusMessage('Starting transcription...');
+    setStatusMessage('Loading transcription model...');
     
     try {
+      // Step 1: Load the Whisper model first
+      await loadWhisper('tiny', (progress) => {
+        setTranscriptionProgress(progress);
+        setStatusMessage('Loading transcription model...');
+      });
+      
+      setStatusMessage('Starting transcription...');
+      
       let result;
       
       const processVideo = async () => {
@@ -63,6 +88,11 @@ export default function TranscriptEditor() {
               setStatusMessage(message || 'Processing...');
               lastUpdate = now;
             }
+          },
+          (partialTranscript) => {
+            // Update transcript in real-time as words come in
+            console.log('[TranscriptEditor] Partial transcript update:', partialTranscript.length, 'words');
+            setTranscript(partialTranscript);
           }
         );
       };
@@ -133,6 +163,8 @@ export default function TranscriptEditor() {
   const isWordActive = (index) => {
     const word = transcript[index];
     if (!word) return false;
+    // Check if current time is within the word's time range
+    // Add small tolerance for better UX
     return currentTime >= word.start && currentTime <= word.end;
   };
 
@@ -242,7 +274,14 @@ export default function TranscriptEditor() {
       </CardHeader>
 
       <CardContent className="flex-1 overflow-hidden p-6">
-        {isTranscribing ? (
+        {transcript.length === 0 && !isTranscribing ? (
+          <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
+            <div className="text-6xl">🎤</div>
+            <p className="text-lg text-muted-foreground">
+              Waiting to transcribe video...
+            </p>
+          </div>
+        ) : transcript.length === 0 && isTranscribing ? (
           <div className="flex flex-col items-center justify-center h-full space-y-4">
             <Loader2 className="w-12 h-12 text-primary animate-spin" />
             <div className="text-center space-y-2 w-full max-w-md">
@@ -251,49 +290,64 @@ export default function TranscriptEditor() {
               <p className="text-sm text-muted-foreground">
                 {Math.round(transcriptionProgress)}%
               </p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Transcript will appear as words are recognized...
+              </p>
             </div>
           </div>
-        ) : transcript.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
-            <div className="text-6xl">🎤</div>
-            <p className="text-lg text-muted-foreground">
-              Waiting to transcribe video...
-            </p>
-          </div>
         ) : (
-          <div 
-            ref={transcriptRef}
-            className="h-full overflow-y-auto space-y-1 px-2"
-          >
-            <p className="text-sm text-muted-foreground mb-4">
-              Click words to jump to that moment • Select multiple words and delete to remove segments
-            </p>
-            
-            <div className="leading-relaxed text-lg">
-              {filteredTranscript.map(({ word, index }) => {
-                const isDeleted = isWordDeleted(word);
-                const isActive = isWordActive(index);
-                const isSelected = selectedWords.has(index);
-                const isLowConfidence = word.confidence < 0.7;
-                
-                return (
-                  <span
-                    key={index}
-                    onClick={() => handleWordClick(index, word)}
-                    className={`
-                      word-clickable inline-block mx-0.5 my-0.5 transition-all duration-150
-                      ${isActive ? 'word-active font-semibold scale-105' : ''}
-                      ${isDeleted ? 'word-deleted' : ''}
-                      ${isSelected ? 'bg-yellow-200 dark:bg-yellow-800 font-medium' : ''}
-                      ${isLowConfidence ? 'word-low-confidence' : ''}
-                      ${searchQuery && word.word.toLowerCase().includes(searchQuery.toLowerCase()) ? 'bg-green-100 dark:bg-green-900' : ''}
-                    `}
-                    title={`${word.start.toFixed(2)}s - ${word.end.toFixed(2)}s (confidence: ${(word.confidence * 100).toFixed(0)}%)`}
-                  >
-                    {word.word}
+          <div className="h-full flex flex-col">
+            {isTranscribing && (
+              <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-600 dark:text-blue-400" />
+                  <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                    Transcribing... {Math.round(transcriptionProgress)}%
                   </span>
-                );
-              })}
+                  <span className="text-xs text-blue-600 dark:text-blue-400 ml-auto">
+                    You can start editing now!
+                  </span>
+                </div>
+                <Progress value={transcriptionProgress} className="mt-2 h-1" />
+              </div>
+            )}
+            
+            <div 
+              ref={transcriptRef}
+              className="flex-1 overflow-y-auto space-y-1 px-2"
+            >
+              <p className="text-sm text-muted-foreground mb-4">
+                Click words to jump to that moment • Select multiple words and delete to remove segments
+              </p>
+              
+              <div className="leading-relaxed text-lg">
+                {filteredTranscript.map(({ word, index }) => {
+                  const isDeleted = isWordDeleted(word);
+                  const isActive = isWordActive(index);
+                  const isSelected = selectedWords.has(index);
+                  const isLowConfidence = word.confidence < 0.7;
+                  
+                  return (
+                    <span
+                      key={index}
+                      ref={isActive ? activeWordRef : null}
+                      onClick={() => handleWordClick(index, word)}
+                      className={`
+                        word-clickable inline-block mx-0.5 my-0.5 transition-all duration-150 cursor-pointer
+                        ${isActive ? 'bg-primary text-primary-foreground font-bold scale-110 px-1 rounded' : ''}
+                        ${isDeleted ? 'line-through opacity-50 text-destructive' : ''}
+                        ${isSelected ? 'bg-yellow-200 dark:bg-yellow-800 font-medium px-1 rounded' : ''}
+                        ${isLowConfidence && !isActive && !isSelected ? 'text-orange-500 dark:text-orange-400' : ''}
+                        ${searchQuery && word.word.toLowerCase().includes(searchQuery.toLowerCase()) ? 'bg-green-100 dark:bg-green-900 px-1 rounded' : ''}
+                        ${!isActive && !isDeleted && !isSelected && !searchQuery ? 'hover:bg-accent hover:px-1 hover:rounded' : ''}
+                      `}
+                      title={`${word.start.toFixed(2)}s - ${word.end.toFixed(2)}s (confidence: ${(word.confidence * 100).toFixed(0)}%)`}
+                    >
+                      {word.word}
+                    </span>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}

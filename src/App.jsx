@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { Film } from 'lucide-react';
 import { EditorProvider, useEditor } from './context/EditorContext';
 import { loadFFmpeg } from './lib/ffmpeg';
 import Header from './components/Header';
@@ -9,7 +10,7 @@ import Timeline from './components/Timeline';
 import ExportPanel from './components/ExportPanel';
 
 function AppContent() {
-  const { videoFile, setFfmpegLoaded, isPlaying, setIsPlaying, currentTime, setCurrentTime, videoDuration } = useEditor();
+  const { videoFile, setFfmpegLoaded, isPlaying, setIsPlaying, currentTime, setCurrentTime, videoDuration, showExportPanel, setShowExportPanel } = useEditor();
 
   useEffect(() => {
     // Check for dark mode preference
@@ -57,36 +58,64 @@ function AppContent() {
 
   if (!videoFile) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen bg-[#0d0f14]">
         <VideoUploader />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-purple-950">
+    <div className="h-screen flex flex-col overflow-hidden bg-[#0d0f14] text-white">
       <Header />
       
-      <main className="container mx-auto p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Transcript Editor */}
-          <div className="lg:col-span-1 h-[calc(100vh-120px)]">
-            <TranscriptEditor />
-          </div>
-
-          {/* Right Column - Video Player, Timeline, Export */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Video Player */}
-            <VideoPlayer />
-
-            {/* Timeline */}
-            <Timeline />
-
-            {/* Export Panel */}
-            <ExportPanel />
+      {/* Export Panel Modal */}
+      {showExportPanel && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-[#111318] rounded-lg border border-[#282e39] w-full max-w-4xl h-[90vh] flex flex-col shadow-2xl">
+            {/* Export Panel Header */}
+            <div className="flex items-center justify-between border-b border-[#282e39] px-6 py-4">
+              <div className="flex items-center gap-3">
+                <Film className="w-6 h-6 text-primary" />
+                <h2 className="text-white text-lg font-bold">Export Settings</h2>
+              </div>
+              <button
+                onClick={() => setShowExportPanel(false)}
+                className="flex items-center justify-center size-10 bg-[#282e39] hover:bg-[#353d4b] text-white rounded-lg transition-colors"
+              >
+                <span className="text-2xl">×</span>
+              </button>
+            </div>
+            
+            {/* Export Panel Content */}
+            <div className="flex-1 overflow-hidden">
+              <ExportPanel />
+            </div>
           </div>
         </div>
-      </main>
+      )}
+      
+      {/* Main Workspace */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Center: Video Player */}
+        <div className="flex-1 flex flex-col min-w-0 bg-[#0d0f14]">
+          {/* Video Player Area */}
+          <div className="flex-1 flex items-center justify-center p-6">
+            <VideoPlayer />
+          </div>
+          
+          {/* Timeline Section */}
+          <div className="h-64 border-t border-[#282e39] bg-[#111318]">
+            <Timeline />
+          </div>
+        </div>
+
+        {/* Right Sidebar: Transcript */}
+        <div className="w-[400px] bg-[#111318] border-l border-[#282e39] flex flex-col hidden lg:flex">
+          <div className="flex-1 overflow-hidden">
+            <TranscriptEditor />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

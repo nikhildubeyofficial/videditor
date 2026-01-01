@@ -1,30 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Film, Moon, Sun, RotateCcw, HelpCircle } from 'lucide-react';
+import React from 'react';
+import { Film } from 'lucide-react';
 import { useEditor } from '../context/EditorContext';
 import { Button } from './ui/button';
 
 export default function Header() {
-  const { reset } = useEditor();
-  const [darkMode, setDarkMode] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
-
-  useEffect(() => {
-    const isDark = document.documentElement.classList.contains('dark');
-    setDarkMode(isDark);
-  }, []);
-
-  const toggleDarkMode = () => {
-    const newDarkMode = !darkMode;
-    setDarkMode(newDarkMode);
-    
-    if (newDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('darkMode', 'true');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('darkMode', 'false');
-    }
-  };
+  const { reset, setShowExportPanel, deletedSegments } = useEditor();
 
   const handleReset = () => {
     if (confirm('Are you sure you want to reset? This will clear all your work.')) {
@@ -33,97 +13,39 @@ export default function Header() {
     }
   };
 
-  const shortcuts = [
-    { key: 'Space', action: 'Play/Pause' },
-    { key: '←/→', action: 'Seek backward/forward' },
-    { key: 'Click word', action: 'Jump to timestamp' },
-    { key: 'Click + Select', action: 'Select multiple words' },
-    { key: 'Delete btn', action: 'Remove selected segments' },
-    { key: '?', action: 'Show this help' },
-  ];
-
   return (
-    <>
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 items-center justify-between px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 text-2xl font-bold">
-              <Film className="w-8 h-8 text-primary" />
-              <span className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-                TextEdit Video
-              </span>
-            </div>
-            <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium">
-              Beta
-            </span>
-          </div>
+    <header className="flex-none flex items-center justify-between border-b border-[#282e39] bg-[#111318] px-6 py-3 z-50">
+      <div className="flex items-center gap-4 text-white">
+        <Film className="w-8 h-8 text-primary" />
+        <h2 className="text-white text-lg font-bold leading-tight tracking-tight">
+          VideoTimeline Pro
+        </h2>
+      </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowHelp(!showHelp)}
-              title="Keyboard Shortcuts"
-            >
-              <HelpCircle className="w-5 h-5" />
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleDarkMode}
-              title="Toggle Dark Mode"
-            >
-              {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleReset}
-              title="Reset Project"
-            >
-              <RotateCcw className="w-5 h-5" />
-            </Button>
-          </div>
+      <div className="flex items-center gap-4">
+        {/* Status Info */}
+        <div className="hidden md:flex items-center gap-2 mr-4 bg-[#1E232E] px-3 py-1.5 rounded text-xs text-gray-400 font-mono">
+          <span className="text-primary font-bold">SAVED</span>
         </div>
-      </header>
 
-      {/* Help Modal */}
-      {showHelp && (
-        <div 
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setShowHelp(false)}
-        >
-          <div 
-            className="bg-background rounded-lg border shadow-xl max-w-md w-full p-6"
-            onClick={(e) => e.stopPropagation()}
+        <div className="flex gap-3">
+          <Button
+            variant="ghost"
+            onClick={handleReset}
+            className="h-9 px-4 bg-[#282e39] hover:bg-[#353d4b] text-white text-sm font-bold"
           >
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-              <HelpCircle className="w-6 h-6 text-primary" />
-              Keyboard Shortcuts
-            </h2>
-            
-            <div className="space-y-3">
-              {shortcuts.map((shortcut, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-md">
-                  <span className="text-sm text-muted-foreground">{shortcut.action}</span>
-                  <kbd className="px-2 py-1 bg-background border rounded text-sm font-mono">
-                    {shortcut.key}
-                  </kbd>
-                </div>
-              ))}
-            </div>
-
-            <Button
-              onClick={() => setShowHelp(false)}
-              className="w-full mt-4"
-            >
-              Got it!
-            </Button>
-          </div>
+            Reset
+          </Button>
+          
+          <Button
+            onClick={() => setShowExportPanel(true)}
+            disabled={deletedSegments.length === 0}
+            className="h-9 px-4 bg-primary hover:bg-blue-600 text-white text-sm font-bold shadow-lg shadow-blue-900/20"
+          >
+            Export Video
+          </Button>
         </div>
-      )}
-    </>
+      </div>
+    </header>
   );
 }

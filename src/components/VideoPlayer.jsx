@@ -109,31 +109,19 @@ export default function VideoPlayer() {
   const speeds = [0.5, 1, 1.5, 2];
 
   return (
-    <Card className="overflow-hidden bg-gradient-to-br from-gray-900 to-gray-800">
-      <div className="relative aspect-video bg-black group">
-        <video
-          ref={videoRef}
-          src={videoUrl}
-          className="w-full h-full object-contain"
-          onClick={togglePlay}
-        />
-        
-        {/* Play overlay */}
-        {!isPlaying && (
-          <div 
-            className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-            onClick={togglePlay}
-          >
-            <div className="w-20 h-20 rounded-full bg-primary/90 flex items-center justify-center backdrop-blur-sm">
-              <Play className="w-10 h-10 text-primary-foreground ml-1" />
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="p-4 space-y-4 bg-card">
-        {/* Timeline */}
-        <div className="space-y-2">
+    <div className="relative w-full max-w-4xl aspect-video bg-black rounded-lg shadow-2xl border border-[#282e39] overflow-hidden group">
+      <video
+        ref={videoRef}
+        src={videoUrl}
+        className="w-full h-full object-contain"
+        onClick={togglePlay}
+        preload="metadata"
+      />
+      
+      {/* Overlay Controls */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
+        {/* Timeline Scrubber */}
+        <div className="w-full mb-4">
           <Slider
             value={[currentTime]}
             onValueChange={handleSeek}
@@ -141,33 +129,34 @@ export default function VideoPlayer() {
             step={0.1}
             className="cursor-pointer"
           />
-          <div className="flex justify-between text-sm text-muted-foreground">
+          <div className="flex justify-between text-xs text-gray-300 mt-1 font-mono">
             <span>{formatTime(currentTime)}</span>
             <span>{formatTime(videoDuration)}</span>
           </div>
         </div>
 
-        {/* Controls */}
+        {/* Controls Row */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-3">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => skip(-5)}
-              title="Rewind 5s"
+              className="text-white hover:text-primary hover:bg-white/10"
             >
               <SkipBack className="w-5 h-5" />
             </Button>
 
             <Button
-              variant="default"
+              variant="ghost"
               size="icon"
               onClick={togglePlay}
+              className="text-white hover:text-primary bg-white/10 rounded-full"
             >
               {isPlaying ? (
-                <Pause className="w-5 h-5" />
+                <Pause className="w-6 h-6" />
               ) : (
-                <Play className="w-5 h-5" />
+                <Play className="w-6 h-6 ml-0.5" />
               )}
             </Button>
 
@@ -175,16 +164,17 @@ export default function VideoPlayer() {
               variant="ghost"
               size="icon"
               onClick={() => skip(5)}
-              title="Forward 5s"
+              className="text-white hover:text-primary hover:bg-white/10"
             >
               <SkipForward className="w-5 h-5" />
             </Button>
 
-            <div className="flex items-center space-x-2 ml-4">
+            <div className="flex items-center gap-2 ml-2">
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={toggleMute}
+                className="text-white hover:text-primary hover:bg-white/10"
               >
                 {isMuted ? (
                   <VolumeX className="w-5 h-5" />
@@ -198,18 +188,19 @@ export default function VideoPlayer() {
                 onValueChange={handleVolumeChange}
                 max={1}
                 step={0.01}
-                className="w-24"
+                className="w-20"
               />
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
             {speeds.map(speed => (
               <Button
                 key={speed}
                 variant={playbackSpeed === speed ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setPlaybackSpeed(speed)}
+                className={playbackSpeed === speed ? 'bg-primary text-white' : 'text-white hover:bg-white/10'}
               >
                 {speed}x
               </Button>
@@ -217,6 +208,17 @@ export default function VideoPlayer() {
           </div>
         </div>
       </div>
-    </Card>
+
+      {/* Center Play Button */}
+      {!isPlaying && (
+        <div 
+          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+        >
+          <div className="bg-black/40 backdrop-blur-sm rounded-full p-6 text-white opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100">
+            <Play className="w-12 h-12 ml-1" />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

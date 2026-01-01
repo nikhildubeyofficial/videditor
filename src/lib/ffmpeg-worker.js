@@ -140,7 +140,7 @@ async function handleExtractAudio(id, ffmpeg, { fileData }) {
   }
 }
 
-async function handleCutVideo(id, ffmpeg, { fileData, segments }) {
+async function handleCutVideo(id, ffmpeg, { fileData, segments, settings }) {
   const logProgress = ({ progress }) => {
     self.postMessage({ type: 'progress', id, progress: progress * 100 });
   };
@@ -168,16 +168,53 @@ async function handleCutVideo(id, ffmpeg, { fileData, segments }) {
       `${concatInputs.join('')}concat=n=${segments.length}:v=1:a=1[outv][outa]`
     ].join(';');
     
-    const ret = await ffmpeg.exec([
+    // Get quality settings
+    const { quality = 'medium', resolution = 'original' } = settings || {};
+    
+    // Quality presets
+    const qualitySettings = {
+      high: { preset: 'slow', crf: '18', audioBitrate: '192k' },
+      medium: { preset: 'medium', crf: '23', audioBitrate: '128k' },
+      low: { preset: 'veryfast', crf: '28', audioBitrate: '96k' }
+    };
+    
+    const qualityConfig = qualitySettings[quality] || qualitySettings.medium;
+    
+    // Resolution settings
+    const resolutionFilters = {
+      '1080p': 'scale=1920:1080:force_original_aspect_ratio=decrease',
+      '720p': 'scale=1280:720:force_original_aspect_ratio=decrease',
+      '480p': 'scale=854:480:force_original_aspect_ratio=decrease',
+      '360p': 'scale=640:360:force_original_aspect_ratio=decrease',
+      'original': null
+    };
+    
+    const scaleFilter = resolutionFilters[resolution];
+    
+    // Build FFmpeg command
+    const ffmpegArgs = [
       '-i', 'input.mp4',
       '-filter_complex', filterComplex,
       '-map', '[outv]',
-      '-map', '[outa]',
+      '-map', '[outa]'
+    ];
+    
+    // Add scale filter if resolution is not original
+    if (scaleFilter) {
+      ffmpegArgs.push('-vf', scaleFilter);
+    }
+    
+    // Add encoding settings
+    ffmpegArgs.push(
       '-c:v', 'libx264',
-      '-preset', 'ultrafast',
+      '-preset', qualityConfig.preset,
+      '-crf', qualityConfig.crf,
       '-c:a', 'aac',
+      '-b:a', qualityConfig.audioBitrate,
       'output.mp4'
-    ]);
+    );
+    
+    const ret = await ffmpeg.exec(ffmpegArgs);
     
     if (ret !== 0) {
       throw new Error(`FFmpeg cut failed with code ${ret}`);

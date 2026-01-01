@@ -1,7 +1,7 @@
 import { extractAudio, cutVideo, getKeptSegments } from './ffmpeg';
 import { transcribeAudio } from './transcription';
 
-export async function processVideoTranscription(videoFile, language, onProgress) {
+export async function processVideoTranscription(videoFile, language, onProgress, onPartialTranscript) {
   try {
     console.log('[VideoProcessor] Starting video transcription...');
     
@@ -15,11 +15,19 @@ export async function processVideoTranscription(videoFile, language, onProgress)
     
     // Step 2: Transcribe (80% of progress)
     onProgress?.(20, 'Transcribing audio...');
-    const transcript = await transcribeAudio(audioBlob, language, (progress) => {
-      onProgress?.(20 + progress * 0.8, 'Transcribing audio...');
-    });
+    const result = await transcribeAudio(
+      audioBlob, 
+      language, 
+      (progress) => {
+        onProgress?.(20 + progress * 0.8, 'Transcribing audio...');
+      },
+      onPartialTranscript
+    );
     
-    console.log('[VideoProcessor] Transcription complete, words:', transcript?.length);
+    console.log('[VideoProcessor] Transcription complete, result:', result);
+    
+    // Handle both formats: {text, words} or just array of words
+    const transcript = result.words || result;
     
     onProgress?.(100, 'Transcription complete!');
     return transcript;
@@ -29,9 +37,20 @@ export async function processVideoTranscription(videoFile, language, onProgress)
   }
 }
 
-export async function exportEditedVideo(videoFile, deletedSegments, duration, onProgress) {
+export async function exportEditedVideo(videoFile, deletedSegments, duration, settings, onProgress) {
   try {
     onProgress?.(0, 'Preparing export...');
+    
+    // If no deletions, just re-encode with quality settings
+    if (deletedSegments.length === 0) {
+      onProgress?.(10, 'Re-encoding video...');
+      const resultBlob = await cutVideo(videoFile, [{ start: 0, end: duration }], settings, (progress) => {
+        onProgress?.(10 + progress * 0.9, 'Re-encoding video...');
+      });
+      
+      onProgress?.(100, 'Export complete!');
+      return resultBlob;
+    }
     
     // Get segments to keep
     const keptSegments = getKeptSegments(duration, deletedSegments);
@@ -40,15 +59,9 @@ export async function exportEditedVideo(videoFile, deletedSegments, duration, on
       throw new Error('No video content remaining after deletions');
     }
     
-    // If no deletions, return original
-    if (deletedSegments.length === 0) {
-      onProgress?.(100, 'Export complete!');
-      return videoFile;
-    }
-    
-    // Cut video
+    // Cut video with quality settings
     onProgress?.(10, 'Processing video...');
-    const resultBlob = await cutVideo(videoFile, keptSegments, (progress) => {
+    const resultBlob = await cutVideo(videoFile, keptSegments, settings, (progress) => {
       onProgress?.(10 + progress * 0.9, 'Processing video...');
     });
     

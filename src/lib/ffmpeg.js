@@ -90,7 +90,7 @@ export async function extractAudio(videoFile, onProgress) {
   );
 }
 
-export async function cutVideo(videoFile, segments, onProgress) {
+export async function cutVideo(videoFile, segments, settings, onProgress) {
   const fileData = await fetchFile(videoFile);
   
   // Use transferable objects for better performance
@@ -100,7 +100,8 @@ export async function cutVideo(videoFile, segments, onProgress) {
     'cutVideo',
     {
       fileData: buffer,
-      segments
+      segments,
+      settings: settings || { quality: 'medium', resolution: 'original', format: 'mp4' }
     },
     onProgress
   );
