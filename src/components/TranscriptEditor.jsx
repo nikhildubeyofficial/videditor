@@ -26,41 +26,30 @@ export default function TranscriptEditor() {
     setIsPlaying,
     deleteWord,
     setLanguage,
+    clearDeletedSegments,
   } = useEditor();
 
   const [selectedWords, setSelectedWords] = useState(new Set());
   const transcriptRef = useRef(null);
   const progressRef = useRef(0);
   const [statusMessage, setStatusMessage] = useState('');
-  const activeWordRef = useRef(null);
-
-  // Auto-scroll to active word
-  useEffect(() => {
-    if (activeWordRef.current && transcriptRef.current) {
-      const container = transcriptRef.current;
-      const activeElement = activeWordRef.current;
-      
-      const containerRect = container.getBoundingClientRect();
-      const elementRect = activeElement.getBoundingClientRect();
-      
-      // Check if element is outside visible area
-      if (elementRect.top < containerRect.top || elementRect.bottom > containerRect.bottom) {
-        activeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }
-  }, [currentTime]);
 
   const startTranscription = React.useCallback(async () => {
     console.log('[TranscriptEditor] Starting transcription...');
     setIsTranscribing(true);
     setTranscriptionProgress(0);
-    setStatusMessage('Loading transcription model...');
+    setStatusMessage('Loading Whisper model...');
+    
+    // Clear any previous deleted segments to prevent strike-through bug
+    if (clearDeletedSegments) {
+      clearDeletedSegments();
+    }
     
     try {
       // Step 1: Load the Whisper model first
       await loadWhisper('tiny', (progress) => {
         setTranscriptionProgress(progress);
-        setStatusMessage('Loading transcription model...');
+        setStatusMessage('Loading Whisper model...');
       });
       
       setStatusMessage('Starting transcription...');
@@ -88,11 +77,6 @@ export default function TranscriptEditor() {
               setStatusMessage(message || 'Processing...');
               lastUpdate = now;
             }
-          },
-          (partialTranscript) => {
-            // Update transcript in real-time as words come in
-            console.log('[TranscriptEditor] Partial transcript update:', partialTranscript.length, 'words');
-            setTranscript(partialTranscript);
           }
         );
       };
@@ -109,7 +93,6 @@ export default function TranscriptEditor() {
       setStatusMessage('Transcription complete!');
       setTranscriptionProgress(100);
       
-      // Force UI update after a short delay
       setTimeout(() => {
         setIsTranscribing(false);
       }, 500);
@@ -120,7 +103,7 @@ export default function TranscriptEditor() {
       alert('Transcription failed: ' + error.message);
       setIsTranscribing(false);
     }
-  }, [videoFile, language, setIsTranscribing, setTranscriptionProgress, setTranscript]);
+  }, [videoFile, language, setIsTranscribing, setTranscriptionProgress, setTranscript, clearDeletedSegments]);
 
   useEffect(() => {
     if (videoFile && transcript.length === 0 && !isTranscribing) {
@@ -129,11 +112,9 @@ export default function TranscriptEditor() {
   }, [videoFile, transcript.length, isTranscribing, startTranscription]);
 
   const handleWordClick = (wordIndex, word) => {
-    // Jump to timestamp
     setCurrentTime(word.start);
     setIsPlaying(true);
     
-    // Toggle selection
     const newSelection = new Set(selectedWords);
     if (newSelection.has(wordIndex)) {
       newSelection.delete(wordIndex);
@@ -146,25 +127,40 @@ export default function TranscriptEditor() {
   const handleDeleteSelected = () => {
     if (selectedWords.size === 0) return;
     
+    console.log('Deleting words:', Array.from(selectedWords));
+    console.log('Current deleted segments BEFORE:', deletedSegments);
+    
     // Delete each selected word
     Array.from(selectedWords).sort((a, b) => b - a).forEach(index => {
+      const word = transcript[index];
+      console.log('Deleting word:', index, word);
       deleteWord(index);
     });
+    
+    // Check segments after deletion
+    setTimeout(() => {
+      console.log('Deleted segments AFTER:', deletedSegments);
+    }, 100);
     
     setSelectedWords(new Set());
   };
 
   const isWordDeleted = (word) => {
-    return deletedSegments.some(seg => 
+    const deleted = deletedSegments.some(seg => 
       word.start >= seg.start && word.end <= seg.end
     );
+    
+    // Debug logging - remove after fixing
+    if (deleted) {
+      console.log('Word deleted:', word.word, 'time:', word.start, '-', word.end, 'segments:', deletedSegments);
+    }
+    
+    return deleted;
   };
 
   const isWordActive = (index) => {
     const word = transcript[index];
     if (!word) return false;
-    // Check if current time is within the word's time range
-    // Add small tolerance for better UX
     return currentTime >= word.start && currentTime <= word.end;
   };
 
@@ -274,14 +270,7 @@ export default function TranscriptEditor() {
       </CardHeader>
 
       <CardContent className="flex-1 overflow-hidden p-6">
-        {transcript.length === 0 && !isTranscribing ? (
-          <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
-            <div className="text-6xl">🎤</div>
-            <p className="text-lg text-muted-foreground">
-              Waiting to transcribe video...
-            </p>
-          </div>
-        ) : transcript.length === 0 && isTranscribing ? (
+        {isTranscribing ? (
           <div className="flex flex-col items-center justify-center h-full space-y-4">
             <Loader2 className="w-12 h-12 text-primary animate-spin" />
             <div className="text-center space-y-2 w-full max-w-md">
@@ -290,64 +279,49 @@ export default function TranscriptEditor() {
               <p className="text-sm text-muted-foreground">
                 {Math.round(transcriptionProgress)}%
               </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                Transcript will appear as words are recognized...
-              </p>
             </div>
           </div>
+        ) : transcript.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
+            <div className="text-6xl">🎤</div>
+            <p className="text-lg text-muted-foreground">
+              Waiting to transcribe video...
+            </p>
+          </div>
         ) : (
-          <div className="h-full flex flex-col">
-            {isTranscribing && (
-              <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-600 dark:text-blue-400" />
-                  <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                    Transcribing... {Math.round(transcriptionProgress)}%
-                  </span>
-                  <span className="text-xs text-blue-600 dark:text-blue-400 ml-auto">
-                    You can start editing now!
-                  </span>
-                </div>
-                <Progress value={transcriptionProgress} className="mt-2 h-1" />
-              </div>
-            )}
+          <div 
+            ref={transcriptRef}
+            className="h-full overflow-y-auto space-y-1 px-2"
+          >
+            <p className="text-sm text-muted-foreground mb-4">
+              Click words to jump to that moment • Select multiple words and delete to remove segments
+            </p>
             
-            <div 
-              ref={transcriptRef}
-              className="flex-1 overflow-y-auto space-y-1 px-2"
-            >
-              <p className="text-sm text-muted-foreground mb-4">
-                Click words to jump to that moment • Select multiple words and delete to remove segments
-              </p>
-              
-              <div className="leading-relaxed text-lg">
-                {filteredTranscript.map(({ word, index }) => {
-                  const isDeleted = isWordDeleted(word);
-                  const isActive = isWordActive(index);
-                  const isSelected = selectedWords.has(index);
-                  const isLowConfidence = word.confidence < 0.7;
-                  
-                  return (
-                    <span
-                      key={index}
-                      ref={isActive ? activeWordRef : null}
-                      onClick={() => handleWordClick(index, word)}
-                      className={`
-                        word-clickable inline-block mx-0.5 my-0.5 transition-all duration-150 cursor-pointer
-                        ${isActive ? 'bg-primary text-primary-foreground font-bold scale-110 px-1 rounded' : ''}
-                        ${isDeleted ? 'line-through opacity-50 text-destructive' : ''}
-                        ${isSelected ? 'bg-yellow-200 dark:bg-yellow-800 font-medium px-1 rounded' : ''}
-                        ${isLowConfidence && !isActive && !isSelected ? 'text-orange-500 dark:text-orange-400' : ''}
-                        ${searchQuery && word.word.toLowerCase().includes(searchQuery.toLowerCase()) ? 'bg-green-100 dark:bg-green-900 px-1 rounded' : ''}
-                        ${!isActive && !isDeleted && !isSelected && !searchQuery ? 'hover:bg-accent hover:px-1 hover:rounded' : ''}
-                      `}
-                      title={`${word.start.toFixed(2)}s - ${word.end.toFixed(2)}s (confidence: ${(word.confidence * 100).toFixed(0)}%)`}
-                    >
-                      {word.word}
-                    </span>
-                  );
-                })}
-              </div>
+            <div className="leading-relaxed text-lg">
+              {filteredTranscript.map(({ word, index }) => {
+                const isDeleted = isWordDeleted(word);
+                const isActive = isWordActive(index);
+                const isSelected = selectedWords.has(index);
+                const isLowConfidence = word.confidence < 0.7;
+                
+                return (
+                  <span
+                    key={index}
+                    onClick={() => handleWordClick(index, word)}
+                    className={`
+                      word-clickable inline-block mx-0.5 my-0.5 transition-all duration-150 cursor-pointer
+                      ${isActive ? 'word-active font-semibold scale-105' : ''}
+                      ${isDeleted ? 'word-deleted' : ''}
+                      ${isSelected ? 'bg-yellow-200 dark:bg-yellow-800 font-medium' : ''}
+                      ${isLowConfidence ? 'word-low-confidence' : ''}
+                      ${searchQuery && word.word.toLowerCase().includes(searchQuery.toLowerCase()) ? 'bg-green-100 dark:bg-green-900' : ''}
+                    `}
+                    title={`${word.start.toFixed(2)}s - ${word.end.toFixed(2)}s (confidence: ${(word.confidence * 100).toFixed(0)}%)`}
+                  >
+                    {word.word}
+                  </span>
+                );
+              })}
             </div>
           </div>
         )}

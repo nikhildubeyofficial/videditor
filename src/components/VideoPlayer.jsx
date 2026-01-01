@@ -14,6 +14,7 @@ export default function VideoPlayer() {
     videoDuration,
     isPlaying,
     playbackSpeed,
+    deletedSegments,
     setCurrentTime,
     setVideoDuration,
     setIsPlaying,
@@ -28,7 +29,21 @@ export default function VideoPlayer() {
     if (!video) return;
 
     const handleTimeUpdate = () => {
-      setCurrentTime(video.currentTime);
+      const time = video.currentTime;
+      
+      // Check if current time is inside a deleted segment
+      // We look for a segment where time is >= start AND time < end (strictly less than end to avoid loop at the exact boundary)
+      const skippedSegment = deletedSegments.find(seg => 
+         time >= seg.start && time < seg.end - 0.1 // Small buffer to ensure we don't skip if we are practically at the end
+      );
+      
+      if (skippedSegment) {
+        // Jump to the end of the segment
+        video.currentTime = skippedSegment.end;
+        setCurrentTime(skippedSegment.end);
+      } else {
+        setCurrentTime(time);
+      }
     };
 
     const handleLoadedMetadata = () => {
@@ -48,7 +63,18 @@ export default function VideoPlayer() {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('ended', handleEnded);
     };
-  }, [setCurrentTime, setVideoDuration, setIsPlaying]);
+  }, [setCurrentTime, setVideoDuration, setIsPlaying, deletedSegments]);
+
+  // Sync video currentTime when it changes externally (e.g., from transcript click)
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    
+    // Only update if there's a significant difference (avoid feedback loop)
+    if (Math.abs(video.currentTime - currentTime) > 0.1) {
+      video.currentTime = currentTime;
+    }
+  }, [currentTime]);
 
   useEffect(() => {
     const video = videoRef.current;

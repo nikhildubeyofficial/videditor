@@ -90,6 +90,10 @@ export const EditorProvider = ({ children }) => {
     });
   }, []);
 
+  const clearDeletedSegments = useCallback(() => {
+    setDeletedSegments([]);
+  }, []);
+
   const reset = useCallback(() => {
     setVideoFile(null);
     setVideoUrl(null);
@@ -139,6 +143,7 @@ export const EditorProvider = ({ children }) => {
     deleteTimeRange,
     deleteWord,
     undoLastDelete,
+    clearDeletedSegments,
     setSelectedWordIndex,
     setSearchQuery,
     setIsExporting,
